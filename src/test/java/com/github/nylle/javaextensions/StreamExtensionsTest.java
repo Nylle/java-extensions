@@ -14,10 +14,56 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StreamExtensionsTest {
 
     @Nested
+    class Range {
+
+        @Test
+        @DisplayName("range() returns an infinite integer stream")
+        void returnsAnInfiniteIntegerStream() {
+            var actual = StreamExtensions.range();
+
+            assertThat(actual.limit(3).toList()).containsExactly(0, 1, 2);
+        }
+
+        @Test
+        @DisplayName("range(end) returns a stream from inclusive zero to exclusive end")
+        void returnsAStreamFromInclusiveZeroToExclusiveEnd() {
+            Integer end = 3;
+
+            var actual = end.range();
+
+            assertThat(actual.toList()).containsExactly(0, 1, 2);
+        }
+
+        @Test
+        @DisplayName("range(start, end) returns a stream from inclusive start to exclusive end")
+        void returnsAStreamFromInclusiveStartToExclusiveEnd() {
+            Integer start = -1;
+            var end = 4;
+
+            var actual = start.range(end);
+
+            assertThat(actual.toList()).containsExactly(-1, 0, 1, 2, 3);
+        }
+
+        @Test
+        @DisplayName("range(start, end, step) returns a stream from inclusive start to exclusive end using step")
+        void returnsAStreamFromInclusiveStartToExclusiveEndWithStep() {
+            Integer start = 3;
+            var end = 10;
+            var step = 3;
+
+            var actual = start.range(end, step);
+
+            assertThat(actual.toList()).containsExactly(3, 6, 9);
+        }
+    }
+
+    @Nested
+    @DisplayName("partition(stream, n)")
     class Partition {
 
         @Test
-        @DisplayName("returns a lazy stream of lists of n items")
+        @DisplayName("returns a lazy stream of lists of n items in stream")
         void returnsALazyStreamOfListsOfNItems() {
             assertThat(Stream.iterate(0, i -> i + 1).partition(2).skip(1).limit(3).toList()).containsExactly(
                     List.of(2, 3),
@@ -26,15 +72,20 @@ class StreamExtensionsTest {
         }
 
         @Test
-        @DisplayName("drops items that make not a complete partition")
+        @DisplayName("drops items from stream that make not a complete partition with size n")
         void dropsItemsThatMakeNotACompletePartition() {
             assertThat(Stream.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9).partition(4).toList()).containsExactly(
                     List.of(0, 1, 2, 3),
                     List.of(4, 5, 6, 7));
         }
+    }
+
+    @Nested
+    @DisplayName("partition(stream, n, step)")
+    class PartitionWithStep {
 
         @Test
-        @DisplayName("uses step to select the starting point for each partition")
+        @DisplayName("uses step to select the starting point for each partition of n items in stream")
         void usesStepToSelectTheStartingPointForEachPartition() {
             assertThat(Stream.iterate(0, i -> i + 1).partition(4, 6).limit(3).toList()).containsExactly(
                     List.of(0, 1, 2, 3),
@@ -43,7 +94,7 @@ class StreamExtensionsTest {
         }
 
         @Test
-        @DisplayName("re-uses items if step is smaller than partition size")
+        @DisplayName("re-uses items in stream if step is smaller than n")
         void reUsesItemsIfStepIsSmallerThanPartitionSize() {
             assertThat(Stream.iterate(0, i -> i + 1).partition(3, 2).limit(4).toList()).containsExactly(
                     List.of(0, 1, 2),
@@ -53,7 +104,22 @@ class StreamExtensionsTest {
         }
 
         @Test
-        @DisplayName("pads last partition if not complete")
+        @DisplayName("can be used to implement a lazy sliding window")
+        void canBeUsedToGetASlidingWindow() {
+            assertThat(Stream.iterate(0, i -> i + 1).partition(2, 1).limit(4).toList()).containsExactly(
+                    List.of(0, 1),
+                    List.of(1, 2),
+                    List.of(2, 3),
+                    List.of(3, 4));
+        }
+    }
+
+    @Nested
+    @DisplayName("partition(stream, n, step, pad)")
+    class PartitionWithStepAndPad {
+
+        @Test
+        @DisplayName("pads last partition of items in stream if shorter than n")
         void padsLastPartitionIfNotComplete() {
             assertThat(Stream.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9).partition(3, 4, List.of(0)).toList()).containsExactly(
                     List.of(0, 1, 2),
@@ -62,7 +128,7 @@ class StreamExtensionsTest {
         }
 
         @Test
-        @DisplayName("returns a shorter last partition if the padding is not long enough")
+        @DisplayName("returns a shorter last partition of items in stream if pad is not long enough to pad to n")
         void returnsAShorterLastPartitionIfThePaddingIsNotLongEnough() {
             assertThat(Stream.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9).partition(3, 4, List.of()).toList()).containsExactly(
                     List.of(0, 1, 2),
@@ -71,28 +137,23 @@ class StreamExtensionsTest {
         }
 
         @Test
-        @DisplayName("pads last partition if not complete discarding overflow")
+        @DisplayName("discards surplus elements in pad, if last partition of items in stream is successfully padded to n")
         void padsLastPartitionIfNotCompleteDiscardingOverflow() {
             assertThat(Stream.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9).partition(3, 4, List.of(0, 0, 0, 0)).toList()).containsExactly(
                     List.of(0, 1, 2),
                     List.of(4, 5, 6),
                     List.of(8, 9, 0));
         }
-    }
-
-    @Nested
-    class SlidingWindow {
 
         @Test
-        void isLazy() {
-            var infiniteStream = Stream.iterate(0, i -> i + 1);
+        @DisplayName("can be used for batching with the last batch being potentially shorter")
+        void canBeUsedForBatchingWithTheLastBatchBeingPotentiallyShorter() {
+            var batchSize = 4;
 
-            var actual = infiniteStream.slidingWindow(3).skip(1).limit(3).toList();
-
-            assertThat(actual).containsExactly(
-                    List.of(1, 2, 3),
-                    List.of(2, 3, 4),
-                    List.of(3, 4, 5));
+            assertThat(Stream.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9).partition(batchSize, batchSize, List.of()).toList()).containsExactly(
+                    List.of(0, 1, 2, 3),
+                    List.of(4, 5, 6, 7),
+                    List.of(8, 9));
         }
     }
 }

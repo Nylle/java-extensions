@@ -19,6 +19,48 @@ import static lombok.AccessLevel.PRIVATE;
 public class StreamExtensions {
 
     /**
+     * Returns an infinite {@link Stream} of {@link Integer} starting at 0, increasing with 1.
+     *
+     * @return an infinite stream of {@link Integer}
+     */
+    public static Stream<Integer> range() {
+        return Stream.iterate(0, i -> i + 1);
+    }
+
+    /**
+     * Returns a {@link Stream} of {@link Integer} starting at 0 until exclusive {@code end}, increasing with 1.
+     *
+     * @param end the exclusive end of the stream
+     * @return a stream of {@link Integer}
+     */
+    public static Stream<Integer> range(Integer end) {
+        return range(0, end, 1);
+    }
+
+    /**
+     * Returns a {@link Stream} of {@link Integer} starting at {@code start} until exclusive {@code end}, increasing with 1.
+     *
+     * @param start the inclusive start of the stream
+     * @param end the exclusive end of the stream
+     * @return a stream of {@link Integer}
+     */
+    public static Stream<Integer> range(Integer start, int end) {
+        return range(start, end, 1);
+    }
+
+    /**
+     * Returns a {@link Stream} of {@link Integer} starting at {@code start} until exclusive {@code end}, increasing with {@code step}.
+     *
+     * @param start the inclusive start of the stream
+     * @param end the exclusive end of the stream
+     * @param step the step by which to increase each integer
+     * @return a stream of {@link Integer}
+     */
+    public static Stream<Integer> range(Integer start, int end, int step) {
+        return Stream.iterate(start, i -> i < end, i -> i + step);
+    }
+
+    /**
      * Partitions {@code stream} into a {@link Stream} of lists with {@code size}.
      * <p>
      * For example, a stream with the elements
@@ -95,7 +137,7 @@ public class StreamExtensions {
      * @return a stream of lists containing the elements of {@code stream}
      */
     public static <T> Stream<List<T>> partition(Stream<T> stream, int size, int step, List<T> pad) {
-        return StreamSupport.stream(Spliterators.spliteratorUnknownSize(new BatchIterator<>(stream.iterator(), size, step, pad), ORDERED), false).filter(x -> !x.isEmpty());
+        return StreamSupport.stream(Spliterators.spliteratorUnknownSize(new PartitionIterator<>(stream.iterator(), size, step, pad), ORDERED), false).filter(x -> !x.isEmpty());
     }
 
     /**
@@ -117,27 +159,23 @@ public class StreamExtensions {
         return partition(stream, size, 1);
     }
 
-    private static Stream<Integer> range(int exclusive) {
-        return Stream.iterate(0, i -> i + 1).limit(exclusive);
-    }
-
     @RequiredArgsConstructor
-    private static class BatchIterator<T> implements Iterator<List<T>> {
+    private static class PartitionIterator<T> implements Iterator<List<T>> {
         private final Iterator<T> iterator;
-        private final int batchSize;
-        private final int step;
+        private final int partitionSize;
+        private final Integer stepSize;
         private final List<T> pad;
-        private final Queue<T> queued = new LinkedList<>();
+        private final Queue<T> partition = new LinkedList<>();
         private List<T> discarded = new ArrayList<>();
 
         @Override
         public List<T> next() {
             prepareNextPartition();
-            dropItems(step - batchSize);
+            dropItems(stepSize - partitionSize);
 
-            var partition = queued.stream().limit(batchSize).toList();
+            var partition = this.partition.stream().limit(partitionSize).toList();
 
-            if (pad == null && partition.size() < batchSize) {
+            if (pad == null && partition.size() < partitionSize) {
                 return List.of();
             }
 
@@ -150,30 +188,30 @@ public class StreamExtensions {
         }
 
         private void prepareNextPartition() {
-            cleanUpQueue();
-            while (iterator.hasNext() && queued.size() < batchSize) {
-                queued.add(iterator.next());
+            cleanUpPartition();
+            while (iterator.hasNext() && partition.size() < partitionSize) {
+                partition.add(iterator.next());
             }
-            padQueue();
+            padPartition();
         }
 
-        private void padQueue() {
-            if (queued.size() < batchSize && pad != null) {
-                queued.addAll(pad);
+        private void padPartition() {
+            if (partition.size() < partitionSize && pad != null) {
+                partition.addAll(pad);
             }
         }
 
-        private void cleanUpQueue() {
-            if (queued.isEmpty()) {
+        private void cleanUpPartition() {
+            if (partition.isEmpty()) {
                 return;
             }
 
-            if (step > batchSize) {
-                queued.clear();
+            if (stepSize > partitionSize) {
+                partition.clear();
                 return;
             }
 
-            range(step).forEach(i -> queued.remove());
+            range(stepSize).forEach(i -> partition.remove());
         }
 
         private void dropItems(int count) {
