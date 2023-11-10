@@ -156,4 +156,42 @@ class StreamExtensionsTest {
                     List.of(8, 9));
         }
     }
+
+    @Nested
+    @DisplayName("zip(stream, other, f)")
+    class Zip {
+
+        @Test
+        @DisplayName("returns a lazy stream consisting of the result of applying f to the set of nth items of each input stream")
+        void isLazy() {
+            var stream = Stream.iterate(0, i -> i + 1);
+            var other = Stream.iterate(0, i -> i + 1);
+
+            var actual = stream.zip(other, (a, b) -> a + b).skip(10).limit(3).toList();
+
+            assertThat(actual).containsExactly(20, 22, 24);
+        }
+
+        @Test
+        @DisplayName("maps items until stream runs out")
+        void withStreamShorterThanOther() {
+            var stream = Stream.of("kung", "wunder");
+            var other = Stream.of("foo", "bar", "ignored");
+
+            var actual = stream.zip(other, (a, b) -> a + b).toList();
+
+            assertThat(actual).containsExactly("kungfoo", "wunderbar");
+        }
+
+        @Test
+        @DisplayName("maps items until other runs out")
+        void withOtherShorterThanStream() {
+            var stream = Stream.of("kung", "wunder", "ignored");
+            var other = Stream.of("foo", "bar");
+
+            var actual = stream.zip(other, (a, b) -> a + b).toList();
+
+            assertThat(actual).containsExactly("kungfoo", "wunderbar");
+        }
+    }
 }

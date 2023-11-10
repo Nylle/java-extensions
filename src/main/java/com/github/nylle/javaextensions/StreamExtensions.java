@@ -8,7 +8,9 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
+import java.util.Spliterator;
 import java.util.Spliterators;
+import java.util.function.BiFunction;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -141,22 +143,40 @@ public class StreamExtensions {
     }
 
     /**
-     * Creates a lazy sliding window with {@code size} for the elements in {@code stream}.
-     * <p>
-     * No matter how large the window is, it will always contain only one new element, which means that the "overlap" is always {@code size}-1.
-     * <p>
-     * For example, a stream with the elements
-     * [1 2 3 4 5]
-     * and window-size of 3 will be partitioned into
-     * [[1 2 3] [2 3 4] [3 4 5]]
+     * Applies {@code f} to the pair of nth items in {@code stream} and {@code other} until one of them is exhausted.
      *
-     * @param stream the stream to create the sliding window over
-     * @param size   the size of the sliding window
-     * @param <T>    the type of elements in {@code stream}
-     * @return a stream of lists with {@code size}
+     * @param stream the stream to zip with {@code other}
+     * @param other the stream to zip with {@code stream}
+     * @param f the function to apply to the pair of items from both streams
+     * @return a stream of mapping results
+     * @param <T> the type of elements in {@code stream}
+     * @param <U> the type of elements in {@code other}
+     * @param <R> the type of elements in the resulting stream
      */
-    public static <T> Stream<List<T>> slidingWindow(Stream<T> stream, int size) {
-        return partition(stream, size, 1);
+    public static <T, U, R> Stream<R> zip(Stream<T> stream, Stream<U> other, BiFunction<T, U, R> f) {
+        var streamSpliterator = stream.spliterator();
+        var otherSpliterator = other.spliterator();
+
+        int characteristics = streamSpliterator.characteristics() & otherSpliterator.characteristics() & ~(Spliterator.DISTINCT | Spliterator.SORTED);
+
+        var streamIterator = Spliterators.iterator(streamSpliterator);
+        var otherIterator = Spliterators.iterator(otherSpliterator);
+        var zipIterator = new Iterator<R>() {
+            @Override
+            public boolean hasNext() {
+                return streamIterator.hasNext() && otherIterator.hasNext();
+            }
+
+            @Override
+            public R next() {
+                return f.apply(streamIterator.next(), otherIterator.next());
+            }
+        };
+
+        var split = Spliterators.spliterator(zipIterator, -1, characteristics);
+        return (stream.isParallel() || other.isParallel())
+                ? StreamSupport.stream(split, true)
+                : StreamSupport.stream(split, false);
     }
 
     @RequiredArgsConstructor
